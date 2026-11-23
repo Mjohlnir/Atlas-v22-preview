@@ -12,11 +12,11 @@ Ambiente isolado para testar **envio automático do histórico Crunchyroll ao na
 **Limites:** o navegador deve manter as duas abas abertas. A coleta depende das requisições do site Crunchyroll e da possibilidade de comunicação entre as janelas. Este preview **não faz login no Atlas, não grava no Supabase e não modifica a biblioteca existente**. Não é o produto completo nem substitui a homologação do banco.
 
 ## Publicação no GitHub Pages
-O workflow `.github/workflows/pages.yml` faz o deploy automático, **mas é necessário ativar o Pages uma vez**:
-**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+A branch pública `gh-pages` foi criada e o GitHub iniciou a publicação automática, sem configuração de serviços pagos. Após o build concluir, a URL será:
 
-Depois de salvar, o workflow pode ser executado pela aba **Actions → Publicar Atlas v22 Preview no GitHub Pages → Run workflow**. Endereço esperado (somente após deploy concluído):
 https://mjohlnir.github.io/Atlas-v22-preview/
+
+O código de desenvolvimento fica em `main`; a versão publicada fica em `gh-pages`. A página de teste não tem backend e não modifica o banco Atlas.
 
 ## Privacidade
 Este repositório é público. **Nunca** envie históricos reais, arquivos JSON, tokens, senhas ou cookies para ele. Os arquivos publicados contêm apenas código e interface. Não existe backend de coleta de histórico.
