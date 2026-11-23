@@ -6,7 +6,7 @@
 <h1>Sincronização automática Crunchyroll</h1>
 <p>Este teste recebe o histórico diretamente do Itamae, sem arquivos JSON. Os registros ficam apenas neste navegador. <b>Não conecta nem modifica o Supabase.</b></p>
 <section class="panel"><h2>1. Conectar Crunchyroll</h2>
-<p>Instale o <a href="itamae-atlas.user.js">Itamae v22 para Atlas</a> no Tampermonkey (desative versões anteriores), entre no Crunchyroll e clique no botão abaixo.</p>
+<p>Instale o <a href="itamae-atlas.user.js">Itamae v22 para Atlas (versão 0.1.1)</a> no Tampermonkey (desative versões anteriores), entre no Crunchyroll e clique no botão abaixo.</p>
 <button id="connect">Conectar aba Crunchyroll</button>
 <p id="status" role="status">Aguardando conexão.</p>
 </section>
@@ -15,7 +15,7 @@
 <p id="last">Nenhum evento recebido.</p><button id="clear" type="button">Limpar dados deste teste</button>
 </section>
 <section class="panel"><h2>Como testar</h2>
-<ol><li>Abra o Crunchyroll pelo botão <b>Conectar aba Crunchyroll</b>.</li><li>No Crunchyroll, clique <b>Enviar ao Atlas</b> na barra do Itamae.</li><li>O script carregará as páginas antigas do histórico automaticamente; você pode interromper quando quiser.</li><li>Volte a esta aba: o contador deve aumentar automaticamente.</li></ol>
+<ol><li>Abra o Crunchyroll pelo botão <b>Conectar aba Crunchyroll</b>.</li><li>No Crunchyroll, clique <b>Enviar ao Atlas</b> na barra do Itamae.</li><li>O Itamae <b>primeiro carrega todo o histórico</b>. Aguarde a mensagem <b>Carregamento concluído</b>; se interromper, nada será enviado.</li><li><b>Somente depois</b> os registros serão enviados automaticamente em lotes e o contador do Atlas aumentará. Novos registros serão sincronizados enquanto as duas abas estiverem abertas.</li></ol>
 <small>É necessário manter as duas abas abertas. A página de histórico precisa disponibilizar os registros ao script. A coleta não funciona com o navegador fechado.</small>
 </section>
 <script>
