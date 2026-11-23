@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
+<title>Atlas v22 · Sincronização automática Crunchyroll</title>
+<style>:root{font:16px system-ui;color-scheme:dark;background:#0e141e;color:#eaf1f8}body{max-width:920px;margin:32px auto;padding:0 20px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:2rem}.panel{border:1px solid #364557;background:#1c2837;border-radius:14px;padding:24px;margin:18px 0}button{background:#f47521;color:#111;border:0;border-radius:8px;padding:12px 20px;font:700 16px system-ui;cursor:pointer}button:disabled{opacity:.5}small,p{line-height:1.6}small{color:#aebcd0}strong.count{font-size:2.4rem}#status{white-space:pre-wrap}a{color:#a9cbff}code{overflow-wrap:anywhere}li{margin:9px 0}</style></head><body>
+<header><b>◈ ATLAS</b><small>v22 · TESTE ISOLADO</small></header>
+<h1>Sincronização automática Crunchyroll</h1>
+<p>Este teste recebe o histórico diretamente do Itamae, sem arquivos JSON. Os registros ficam apenas neste navegador. <b>Não conecta nem modifica o Supabase.</b></p>
+<section class="panel"><h2>1. Conectar Crunchyroll</h2>
+<p>Instale o <a href="itamae-atlas.user.js">Itamae v22 para Atlas</a> no Tampermonkey (desative versões anteriores), entre no Crunchyroll e clique no botão abaixo.</p>
+<button id="connect">Conectar aba Crunchyroll</button>
+<p id="status" role="status">Aguardando conexão.</p>
+</section>
+<section class="panel"><h2>2. Histórico recebido automaticamente</h2>
+<strong class="count" id="count">0</strong><p>reproduções únicas recebidas</p>
+<p id="last">Nenhum evento recebido.</p><button id="clear" type="button">Limpar dados deste teste</button>
+</section>
+<section class="panel"><h2>Como testar</h2>
+<ol><li>Abra o Crunchyroll pelo botão <b>Conectar aba Crunchyroll</b>.</li><li>No Crunchyroll, clique <b>Enviar ao Atlas</b> na barra do Itamae.</li><li>O script carregará as páginas antigas do histórico automaticamente; você pode interromper quando quiser.</li><li>Volte a esta aba: o contador deve aumentar automaticamente.</li></ol>
+<small>É necessário manter as duas abas abertas. A página de histórico precisa disponibilizar os registros ao script. A coleta não funciona com o navegador fechado.</small>
+</section>
+<script>
+'use strict';
+const allowed=new Set(['https://www.crunchyroll.com','https://crunchyroll.com']);
+const $=id=>document.getElementById(id);
+const key='atlas-crunchy-v22-test-events';
+let tab=null, timer=null;
+let entries=new Map();
+try{entries=new Map(JSON.parse(localStorage.getItem(key)||'[]'))}catch{entries=new Map()}
+function show(){ $('count').textContent=String(entries.size); }
+show();
+$('connect').onclick=()=>{
+ tab=window.open('https://www.crunchyroll.com/history','atlas-crunchy-sync');
+ if(!tab){$('status').textContent='O navegador bloqueou a abertura da aba. Permita pop-ups e tente novamente.';return}
+ $('status').textContent='Conectando... Na aba Crunchyroll, clique Enviar ao Atlas.';
+ clearInterval(timer);let tries=0;
+ timer=setInterval(()=>{
+  if(!tab||tab.closed||tries++>300){clearInterval(timer);return}
+  for(const origin of allowed)tab.postMessage({protocol:'atlas-crunchy-v1',type:'hello'},origin);
+ },1000);
+};
+window.addEventListener('message',event=>{
+ if(!tab||event.source!==tab||!allowed.has(event.origin))return;
+ const m=event.data;
+ if(m?.protocol!=='atlas-crunchy-v1'||m.type!=='history')return;
+ try{
+  if(!Array.isArray(m.rows)||m.rows.length<1||m.rows.length>500)throw Error('Lote inválido');
+  const batch=new Map();
+  for(const r of m.rows){
+   const id=r?.id??r?.content_id??r?.panel?.id??r?.episode_id;
+   const date=r?.date_played??r?.watched_at??r?.date??r?.updated_at;
+   if(!id||!date||!Number.isFinite(Date.parse(date)))throw Error('Evento sem ID ou data válida');
+   const k=String(id)+'@'+new Date(date).toISOString();
+   if(batch.has(k))throw Error('Evento duplicado no lote');
+   batch.set(k,{id:String(id),date:new Date(date).toISOString(),series:String(r.series||r.series_title||r.panel?.episode_metadata?.series_title||r.panel?.series_title||''),episode:r.episode??r.panel?.episode_metadata?.episode_number??null});
+  }
+  const next=new Map(entries);
+  for(const [k,v] of batch)next.set(k,v);
+  // Somente confirmar após a persistência local ser concluída.
+  localStorage.setItem(key,JSON.stringify([...next]));
+  entries=next;show();
+  $('status').textContent='Lote confirmado: '+batch.size+' eventos. Histórico preservado neste navegador.';
+  $('last').textContent='Última sincronização: '+new Date().toLocaleString('pt-BR');
+  event.source.postMessage({protocol:'atlas-crunchy-v1',type:'ack',batch:m.batch,count:batch.size},event.origin);
+ }catch(e){
+  event.source.postMessage({protocol:'atlas-crunchy-v1',type:'error',batch:m.batch,message:String(e.message||e)},event.origin);
+  $('status').textContent='Falha: '+String(e.message||e);
+ }
+});
+$('clear').onclick=()=>{if(!confirm('Apagar apenas o histórico deste teste local?'))return;localStorage.removeItem(key);entries.clear();show();$('last').textContent='Nenhum evento recebido.'};
+</script></body></html>
