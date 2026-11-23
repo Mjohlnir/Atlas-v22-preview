@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Atlas v22 - Itamae Crunchyroll Sync
 // @namespace    https://github.com/Mjohlnir/Atlas-v22-preview
-// @version      0.1.0
+// @version      0.1.1
 // @description  Sincroniza histórico Crunchyroll diretamente com a aba Atlas, sem JSON
 // @match        https://www.crunchyroll.com/*
 // @match        https://crunchyroll.com/*
@@ -16,12 +16,13 @@
   // Episódio + data da reprodução: repetir o mesmo episódio não apaga o evento anterior.
   const eventKey = item => {
     const id=item?.id??item?.content_id??item?.panel?.id??item?.episode_id;
-    const when=item?.date??item?.watched_at??item?.updated_at??item?.date_played;
+    const when=item?.date_played??item?.watched_at??item?.date??item?.updated_at;
     return id && when ? String(id)+'@'+String(when) : null;
   };
   const historyUrl = /\/content\/v2\/[^/?]+\/watch-history(?:[/?#]|$)/i;
   let loading = false;
   let stopRequested = false;
+  let fullyLoaded = false;
   let panel, status, loadBtn, saveBtn, sendBtn;
   let atlasOrigin = null, enabled = false, pending = false, lastSent = new Map(), batchCounter = 0;
   const allowedAtlas = new Set(['https://mjohlnir.github.io','http://localhost:3000','http://127.0.0.1:3000','http://localhost:5500','http://127.0.0.1:5500']);
@@ -33,9 +34,9 @@
     if (event.data.type === 'error') {enabled=false; if(status)status.textContent = 'Atlas recusou lote: '+String(event.data.message).slice(0,130);}
   });
   let sendTimer;
-  function scheduleSend(){if(!enabled||pending||!atlasOrigin)return;clearTimeout(sendTimer);sendTimer=setTimeout(sendToAtlas,1200)}
+  function scheduleSend(){if(!enabled||loading||pending||!atlasOrigin)return;clearTimeout(sendTimer);sendTimer=setTimeout(sendToAtlas,1200)}
   function sendToAtlas(){
-    if(!enabled||pending||!atlasOrigin||!window.opener||window.opener.closed)return;
+    if(!enabled||loading||pending||!atlasOrigin||!window.opener||window.opener.closed)return;
     const rows=[];
     for(const [k,item] of entries){const signature=JSON.stringify(item);if(lastSent.get(k)!==signature){rows.push(item);if(rows.length===500)break}}
     if(!rows.length)return;
@@ -52,11 +53,32 @@
     const timeout=setTimeout(()=>{window.removeEventListener('message',onAck);pending=false;enabled=false;if(status)status.textContent='Sem confirmação do Atlas. Reative o envio para tentar novamente.'},30000);
     window.opener.postMessage({protocol,type:'history',batch,rows},atlasOrigin);
   }
-  function startSend(){if(!atlasOrigin)return alert('Abra o Crunchyroll pelo botão Conectar aba Crunchyroll dentro do Atlas.');enabled=true;scheduleSend();if(!loading)autoLoad();}
+  async function startSend(){
+    if(!atlasOrigin||!window.opener||window.opener.closed)
+      return alert('Abra o Crunchyroll pelo botão Conectar aba Crunchyroll dentro do Atlas.');
+    if(loading){if(status)status.textContent='Aguarde o carregamento terminar antes de enviar.';return;}
+    if(enabled){scheduleSend();return;}
+    if(sendBtn)sendBtn.disabled=true;
+    try{
+      // Nenhum registro é transmitido enquanto o histórico inicial estiver sendo carregado.
+      if(!fullyLoaded){
+        if(status)status.textContent='Carregando TODO o histórico antes de enviar ao Atlas...';
+        if(!await autoLoad())return;
+      }
+      if(!atlasOrigin||!window.opener||window.opener.closed){
+        if(status)status.textContent='A aba Atlas foi fechada. Reconecte antes de enviar.';
+        return;
+      }
+      enabled=true;
+      if(status)status.textContent='Histórico completo: '+entries.size+' registros. Iniciando envio ao Atlas...';
+      scheduleSend();
+    }finally{if(sendBtn)sendBtn.disabled=!atlasOrigin;}
+  }
 
   const isHistory = () => /\/history\/?$/.test(location.pathname);
   const label = () => {
-    if (status) status.textContent = `${entries.size} registros capturados`;
+    if (status && loading) status.textContent = 'Carregando histórico: '+entries.size+' registros capturados...';
+    else if(status && !enabled) status.textContent = entries.size+' registros capturados'+(fullyLoaded?' — carregamento completo':'');
     if (saveBtn) saveBtn.disabled = entries.size === 0;
   };
   function ingest(url, data) {
@@ -112,27 +134,49 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
   async function autoLoad() {
-    if (loading) { stopRequested = true; return; }
-    loading = true; stopRequested = false;
-    loadBtn.textContent = 'Parar';
-    let stable = 0;
-    let previousCount = -1;
-    let previousHeight = -1;
-    for (let n = 0; n < 300 && !stopRequested; n++) {
-      window.scrollTo(0, document.documentElement.scrollHeight);
-      await new Promise(resolve => setTimeout(resolve, 1800));
-      const height = document.documentElement.scrollHeight;
-      if (entries.size === previousCount && height === previousHeight) stable++;
-      else stable = 0;
-      previousCount = entries.size;
-      previousHeight = height;
-      if (stable >= 4) break;
+    if(loading){stopRequested=true;if(status)status.textContent='Interrompendo carregamento...';return false;}
+    const resumeSync=enabled;
+    enabled=false;
+    fullyLoaded=false;
+    loading=true;
+    stopRequested=false;
+    loadBtn.textContent='Parar';
+    if(sendBtn)sendBtn.disabled=true;
+    let stable=0, previousCount=-1, previousHeight=-1, completed=false;
+    try{
+      for(let n=0;n<300&&!stopRequested;n++){
+        window.scrollTo(0,document.documentElement.scrollHeight);
+        await new Promise(resolve=>setTimeout(resolve,1800));
+        if(stopRequested)break;
+        const height=document.documentElement.scrollHeight;
+        if(entries.size===previousCount&&height===previousHeight)stable++;
+        else stable=0;
+        previousCount=entries.size;
+        previousHeight=height;
+        if(stable>=4){completed=true;break;}
+      }
+    }finally{
+      loading=false;
+      loadBtn.textContent='Carregar tudo';
+      if(sendBtn)sendBtn.disabled=!atlasOrigin;
+      window.scrollTo(0,0);
     }
-    loading = false;
-    loadBtn.textContent = 'Carregar tudo';
-    label();
-    if (!entries.size) status.textContent = '0 registros: API nao capturada; veja instrucoes';
-    window.scrollTo(0, 0);
+    if(stopRequested){
+      if(status)status.textContent='Carregamento interrompido ('+entries.size+' registros). Nada foi enviado.';
+      return false;
+    }
+    if(!completed){
+      if(status)status.textContent='Não foi possível confirmar o fim do histórico. Nada foi enviado; tente novamente.';
+      return false;
+    }
+    if(!entries.size){
+      if(status)status.textContent='Nenhum registro capturado pela API. Nada foi enviado; verifique o script.';
+      return false;
+    }
+    fullyLoaded=true;
+    if(status)status.textContent='Carregamento concluído: '+entries.size+' registros.';
+    if(resumeSync){enabled=true;scheduleSend();}
+    return true;
   }
   function render() {
     if (!document.body) return;
